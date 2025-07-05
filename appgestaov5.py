@@ -202,7 +202,7 @@ elif st.session_state.authenticated:
                 log_action(username, "upload", file_path)
     # VISUALIZAÇÃO HIERÁRQUICA COM EXPANDERS
     if "download" in user_permissions or "view" in user_permissions:
-        st.markdown("### 📂 Documentos por Estrutura")
+        st.markdown("### 📂 PROJETOS")
         
         for proj in sorted(os.listdir(BASE_DIR)):
             proj_path = os.path.join(BASE_DIR, proj)
