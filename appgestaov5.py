@@ -121,7 +121,7 @@ elif st.session_state.registration_mode and not st.session_state.authenticated:
         st.session_state.registration_unlocked = False
         st.rerun()
 
-# ADMIN
+# AUTENTICAÇÃO ADMINISTRADOR
 elif st.session_state.admin_mode and not st.session_state.admin_authenticated:
     st.subheader("Autenticação do Administrador")
     master = st.text_input("Senha Mestra", type="password")
@@ -144,17 +144,22 @@ elif st.session_state.admin_mode and st.session_state.admin_authenticated:
         st.markdown(f"#### 👤 {user}")
         col1, col2 = st.columns([1, 2])
         with col1:
-            if st.button(f"Excluir {user}", key=f"del_{user}"):
+            if st.button(f"Excluir {user}", key=hash_key(f"del_{user}")):
                 c.execute("DELETE FROM users WHERE username=?", (user,))
                 conn.commit()
                 st.success(f"Usuário {user} removido.")
                 st.rerun()
         with col2:
-            projetos = st.multiselect(f"Projetos ({user})", options=todos_projetos, default=projetos_atuais.split(',') if projetos_atuais else [], key=f"proj_{user}")
-            permissoes = st.multiselect(f"Permissões ({user})", options=["upload", "download", "view"], default=permissoes_atuais.split(',') if permissoes_atuais else [], key=f"perm_{user}")
-            nova_senha = st.text_input(f"Nova senha ({user})", key=f"senha_{user}")
-            if st.button(f"Atualizar senha {user}", key=f"update_{user}"):
-                c.execute("UPDATE users SET password=?, projects=?, permissions=? WHERE username=?", (nova_senha, ','.join(projetos), ','.join(permissoes), user))
+            projetos = st.multiselect(f"Projetos ({user})", options=todos_projetos,
+                                      default=projetos_atuais.split(',') if projetos_atuais else [],
+                                      key=hash_key(f"proj_{user}"))
+            permissoes = st.multiselect(f"Permissões ({user})", options=["upload", "download", "view"],
+                                        default=permissoes_atuais.split(',') if permissoes_atuais else [],
+                                        key=hash_key(f"perm_{user}"))
+            nova_senha = st.text_input(f"Nova senha ({user})", key=hash_key(f"senha_{user}"))
+            if st.button(f"Atualizar senha {user}", key=hash_key(f"update_{user}")):
+                c.execute("UPDATE users SET password=?, projects=?, permissions=? WHERE username=?",
+                          (nova_senha, ','.join(projetos), ','.join(permissoes), user))
                 conn.commit()
                 st.success(f"Usuário {user} atualizado.")
                 st.rerun()
@@ -184,7 +189,6 @@ elif st.session_state.authenticated:
             project = st.text_input("Projeto")
             discipline = st.text_input("Disciplina")
             phase = st.text_input("Fase")
-            description = st.text_input("Descrição do Arquivo (opcional)")
             uploaded_file = st.file_uploader("Escolha o arquivo")
             submitted = st.form_submit_button("Enviar")
             if submitted and uploaded_file:
@@ -195,49 +199,54 @@ elif st.session_state.authenticated:
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.read())
                 st.success(f"Arquivo '{filename}' salvo com sucesso.")
-                log_action(username, "upload", file_path, note=description)
-
-    # VISUALIZAÇÃO HIERÁRQUICA
+                log_action(username, "upload", file_path)
+    # VISUALIZAÇÃO HIERÁRQUICA COM EXPANDERS
     if "download" in user_permissions or "view" in user_permissions:
         st.markdown("### 📂 Documentos por Estrutura")
+        
         for proj in sorted(os.listdir(BASE_DIR)):
             proj_path = os.path.join(BASE_DIR, proj)
             if not os.path.isdir(proj_path): continue
-            with st.expander(f"📁 Projeto: {proj}"):
+
+            with st.expander(f"📁 Projeto: {proj}", expanded=False):
                 for disc in sorted(os.listdir(proj_path)):
                     disc_path = os.path.join(proj_path, disc)
                     if not os.path.isdir(disc_path): continue
-                    st.markdown(f"#### 📂 Disciplina: `{disc}`")
-                    for fase in sorted(os.listdir(disc_path)):
-                        fase_path = os.path.join(disc_path, fase)
-                        if not os.path.isdir(fase_path): continue
-                        st.markdown(f"##### 📄 Fase: `{fase}`")
-                        for file in sorted(os.listdir(fase_path)):
-                            full_path = os.path.join(fase_path, file)
-                            icon = file_icon(file)
-                            st.markdown(f"- {icon} `{file}`")
-                            with open(full_path, "rb") as f:
-                                b64 = base64.b64encode(f.read()).decode("utf-8")
-                                href = f'<a href="data:application/pdf;base64,{b64}" target="_blank">🔍 Visualizar PDF</a>'
-                                if file.endswith(".pdf"):
-                                    if st.button(f"🔍 Abrir PDF ({file})", key=hash_key("btn_" + full_path)):
-                                        st.markdown(href, unsafe_allow_html=True)
-                                    f.seek(0)
-                                    if "download" in user_permissions:
-                                        st.download_button("📥 Baixar PDF", f, file_name=file, mime="application/pdf", key=hash_key("dl_" + full_path))
-                                elif file.lower().endswith(('.jpg', '.jpeg', '.png')):
-                                    st.image(f.read(), caption=file)
-                                    f.seek(0)
-                                    if "download" in user_permissions:
-                                        st.download_button("📥 Baixar Imagem", f, file_name=file, key=hash_key("img_" + full_path))
-                                else:
-                                    if "download" in user_permissions:
-                                        st.download_button("📥 Baixar Arquivo", f, file_name=file, key=hash_key("oth_" + full_path))
-                            log_action(username, "visualizar", full_path)
-        # PESQUISA POR PALAVRA-CHAVE
-        st.markdown("### 🔎 Buscar por Palavra-chave")
-        keyword = st.text_input("Digite parte do nome do arquivo para buscar")
 
+                    with st.expander(f"📂 Disciplina: {disc}", expanded=False):
+                        for fase in sorted(os.listdir(disc_path)):
+                            fase_path = os.path.join(disc_path, fase)
+                            if not os.path.isdir(fase_path): continue
+
+                            with st.expander(f"📄 Fase: {fase}", expanded=False):
+                                for file in sorted(os.listdir(fase_path)):
+                                    full_path = os.path.join(fase_path, file)
+                                    icon = file_icon(file)
+                                    st.markdown(f"- {icon} `{file}`")
+
+                                    with open(full_path, "rb") as f:
+                                        b64 = base64.b64encode(f.read()).decode("utf-8")
+                                        if file.endswith(".pdf"):
+                                            href = f'<a href="data:application/pdf;base64,{b64}" target="_blank">🔍 Visualizar PDF</a>'
+                                            if st.button(f"🔍 Abrir PDF ({file})", key=hash_key("btn_" + full_path)):
+                                                st.markdown(href, unsafe_allow_html=True)
+                                            f.seek(0)
+                                            if "download" in user_permissions:
+                                                st.download_button("📥 Baixar PDF", f, file_name=file, mime="application/pdf", key=hash_key("dl_" + full_path))
+                                        elif file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                                            st.image(f.read(), caption=file)
+                                            f.seek(0)
+                                            if "download" in user_permissions:
+                                                st.download_button("📥 Baixar Imagem", f, file_name=file, key=hash_key("img_" + full_path))
+                                        else:
+                                            if "download" in user_permissions:
+                                                st.download_button("📥 Baixar Arquivo", f, file_name=file, key=hash_key("oth_" + full_path))
+
+                                    log_action(username, "visualizar", full_path)
+    # PESQUISA POR PALAVRA-CHAVE
+    if "download" in user_permissions or "view" in user_permissions:
+        st.markdown("### 🔍 Pesquisa de Documentos")
+        keyword = st.text_input("Buscar por palavra-chave")
         if keyword:
             matched = []
             for root, _, files in os.walk(BASE_DIR):
@@ -246,32 +255,31 @@ elif st.session_state.authenticated:
                         matched.append(os.path.join(root, file))
 
             if matched:
-                st.success(f"{len(matched)} arquivo(s) encontrado(s):")
                 for file in matched:
-                    st.markdown(f"- {file_icon(file)} `{os.path.relpath(file, BASE_DIR)}`")
+                    st.write(f"📄 {os.path.relpath(file, BASE_DIR)}")
                     with open(file, "rb") as f:
                         b64 = base64.b64encode(f.read()).decode("utf-8")
                         if file.endswith(".pdf"):
                             href = f'<a href="data:application/pdf;base64,{b64}" target="_blank">🔍 Visualizar PDF</a>'
-                            if st.button(f"🔍 Abrir PDF ({os.path.basename(file)})", key=hash_key("btn_search_" + file)):
+                            if st.button(f"🔍 Abrir PDF ({file})", key=hash_key("btnk_" + file)):
                                 st.markdown(href, unsafe_allow_html=True)
                             f.seek(0)
                             if "download" in user_permissions:
-                                st.download_button("📥 Baixar PDF", f, file_name=os.path.basename(file), mime="application/pdf", key=hash_key("dl_search_" + file))
+                                st.download_button("📥 Baixar PDF", f, file_name=os.path.basename(file), mime="application/pdf", key=hash_key("dlk_" + file))
                         elif file.lower().endswith(('.jpg', '.jpeg', '.png')):
                             st.image(f.read(), caption=os.path.basename(file))
                             f.seek(0)
                             if "download" in user_permissions:
-                                st.download_button("📥 Baixar Imagem", f, file_name=os.path.basename(file), key=hash_key("img_search_" + file))
+                                st.download_button("📥 Baixar Imagem", f, file_name=os.path.basename(file), key=hash_key("imgk_" + file))
                         else:
                             if "download" in user_permissions:
-                                st.download_button("📥 Baixar Arquivo", f, file_name=os.path.basename(file), key=hash_key("oth_search_" + file))
+                                st.download_button("📥 Baixar Arquivo", f, file_name=os.path.basename(file), key=hash_key("othk_" + file))
                     log_action(username, "visualizar", file)
             else:
                 st.warning("Nenhum arquivo encontrado.")
 
-    # LOG DE AÇÕES
-    st.markdown("### 🧾 Histórico de Ações")
+    # HISTÓRICO DE AÇÕES
+    st.markdown("### 📜 Histórico de Ações")
     if st.checkbox("Mostrar log"):
         for row in c.execute("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 50"):
             st.write(f"{row[0]} | Usuário: {row[1]} | Ação: {row[2]} | Arquivo: {row[3]}")
