@@ -118,7 +118,7 @@ elif st.session_state.registration_mode and not st.session_state.authenticated:
         st.session_state.registration_unlocked = False
         st.rerun()
 
-# AUTENTICAÇÃO ADMINISTRADOR
+# ADMIN MODE
 elif st.session_state.admin_mode and not st.session_state.admin_authenticated:
     st.subheader("Autenticação do Administrador")
     master = st.text_input("Senha Mestra", type="password")
@@ -129,7 +129,6 @@ elif st.session_state.admin_mode and not st.session_state.admin_authenticated:
             st.rerun()
         else:
             st.error("Senha incorreta.")
-
 # PAINEL ADMINISTRATIVO
 elif st.session_state.admin_mode and st.session_state.admin_authenticated:
     st.subheader("Painel Administrativo")
@@ -190,15 +189,14 @@ elif st.session_state.authenticated:
                 path = get_project_path(project, discipline, phase)
                 file_path = os.path.join(path, filename)
                 save_versioned_file(file_path)
-                with st.spinner("Salvando arquivo..."):
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.read())
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.read())
                 st.success(f"Arquivo '{filename}' salvo com sucesso.")
                 log_action(username, "upload", file_path, note=description)
 
-    # VISUALIZAÇÃO HIERÁRQUICA + PESQUISA
+    # VISUALIZAÇÃO HIERÁRQUICA
     if "download" in user_permissions or "view" in user_permissions:
-        st.markdown("### 🔍 Documentos por Estrutura")
+        st.markdown("### 📂 Documentos por Estrutura")
         for proj in sorted(os.listdir(BASE_DIR)):
             proj_path = os.path.join(BASE_DIR, proj)
             if not os.path.isdir(proj_path): continue
@@ -234,6 +232,42 @@ elif st.session_state.authenticated:
                                         st.download_button("📥 Baixar Arquivo", f, file_name=file)
                             log_action(username, "visualizar", full_path)
 
+        # PESQUISA POR PALAVRA-CHAVE
+        st.markdown("### 🔎 Buscar por Palavra-chave")
+        keyword = st.text_input("Digite parte do nome do arquivo para buscar")
+        if keyword:
+            matched = []
+            for root, _, files in os.walk(BASE_DIR):
+                for file in files:
+                    if keyword.lower() in file.lower():
+                        matched.append(os.path.join(root, file))
+
+            if matched:
+                st.success(f"{len(matched)} arquivo(s) encontrado(s):")
+                for file in matched:
+                    st.markdown(f"- {file_icon(file)} `{os.path.relpath(file, BASE_DIR)}`")
+                    with open(file, "rb") as f:
+                        if file.endswith(".pdf"):
+                            b64 = base64.b64encode(f.read()).decode("utf-8")
+                            href = f'<a href="data:application/pdf;base64,{b64}" target="_blank">🔍 Visualizar PDF</a>'
+                            if st.button(f"🔍 Abrir PDF ({os.path.basename(file)})", key=file+"_search"):
+                                st.markdown(href, unsafe_allow_html=True)
+                            f.seek(0)
+                            if "download" in user_permissions:
+                                st.download_button("📥 Baixar PDF", f, file_name=os.path.basename(file), mime="application/pdf")
+                        elif file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                            st.image(f.read(), caption=os.path.basename(file))
+                            f.seek(0)
+                            if "download" in user_permissions:
+                                st.download_button("📥 Baixar Imagem", f, file_name=os.path.basename(file))
+                        else:
+                            if "download" in user_permissions:
+                                st.download_button("📥 Baixar Arquivo", f, file_name=os.path.basename(file))
+                    log_action(username, "visualizar", file)
+            else:
+                st.warning("Nenhum arquivo encontrado.")
+
+    # LOG DE AÇÕES
     st.markdown("### 🧾 Histórico de Ações")
     if st.checkbox("Mostrar log"):
         for row in c.execute("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 50"):
